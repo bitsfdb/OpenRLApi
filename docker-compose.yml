@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  openrlapi:
+    build: .
+    container_name: openrlapi
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./thumbnails:/app/thumbnails
+      - ./.cache:/app/.cache
+    environment:
+      - OPENRL_HOST=0.0.0.0
+      - OPENRL_PORT=8000
+      - OPENRL_RATE_LIMIT=300
+      - OPENRL_CORS_ORIGINS=*
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

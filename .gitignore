@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.env
+.cache/
+tmp_*/
+*.upk
+*.exe
+games/
+.pytest_cache/
+.coverage
+htmlcov/

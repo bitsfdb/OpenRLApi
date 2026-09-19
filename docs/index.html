@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>openrlapi</title>
+  <style>
+    :root {
+      --bg: #fff;
+      --fg: #111;
+      --muted: #666;
+      --border: #e5e5e5;
+      --code-bg: #f6f8fa;
+      --link: #0969da;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --muted: #8b949e;
+        --border: #30363d;
+        --code-bg: #161b22;
+        --link: #58a6ff;
+      }
+    }
+    body {
+      max-width: 740px;
+      margin: 40px auto;
+      padding: 0 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: var(--fg);
+      background: var(--bg);
+    }
+    h1, h2, h3 { line-height: 1.3; margin-top: 1.5em; margin-bottom: 0.5em; font-weight: 600; }
+    h1 { font-size: 1.8em; margin-top: 0; }
+    h2 { font-size: 1.25em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+    h3 { font-size: 1.05em; }
+    p, ul, ol, table, pre { margin-bottom: 1em; }
+    ul, ol { padding-left: 1.5em; }
+    li { margin-bottom: 0.25em; }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+    }
+    pre {
+      background: var(--code-bg);
+      padding: 12px 14px;
+      border-radius: 6px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+    }
+    pre code { background: none; padding: 0; font-size: 0.85em; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1em; font-size: 0.9em; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { font-weight: 600; }
+    .nav { margin-bottom: 2em; font-size: 0.9em; color: var(--muted); }
+    .nav a { margin-right: 14px; }
+    footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid var(--border); font-size: 0.85em; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="nav">
+    <a href="https://github.com/bitsfdb/OpenRLApi">GitHub</a>
+    <a href="#features">Features</a>
+    <a href="#quickstart">Quickstart</a>
+    <a href="#endpoints">Endpoints</a>
+    <a href="#config">Config</a>
+    <a href="#cli">CLI</a>
+  </div>
+
+  <h1>openrlapi</h1>
+  <p>Self-contained, open-source Rocket League item catalog and asset API. Extracts UPK binaries and decrypted Coalesced files, parses game metadata, and serves endpoints with in-memory gzip caching.</p>
+
+  <h2 id="features">Features</h2>
+  <ul>
+    <li><strong>12 languages:</strong> Full item names and player titles localized across <code>INT</code>, <code>DEU</code>, <code>DUT</code>, <code>ESN</code>, <code>FRA</code>, <code>ITA</code>, <code>JPN</code>, <code>KOR</code>, <code>POL</code>, <code>PTB</code>, <code>RUS</code>, <code>TRK</code> via <code>?l=</code>.</li>
+    <li><strong>Zero-copy in-memory caching:</strong> Pre-compressed gzip level 9 responses served in &lt;1ms.</li>
+    <li><strong>Preserving updater:</strong> Downloads and extracts game binaries without deletion, parses PE headers for GPsyonixBuildID, and auto-syncs <code>items.ver</code>.</li>
+    <li><strong>Thumbnails:</strong> Batch texture extraction from <code>_T_SF.upk</code> packages via umodel into normalized PNGs.</li>
+    <li><strong>Portability:</strong> Zero hardcoded server paths. Runs via Docker or standalone CLI.</li>
+  </ul>
+
+  <h2 id="quickstart">Quickstart</h2>
+  <pre><code># Clone repository
+git clone https://github.com/bitsfdb/OpenRLApi.git
+cd OpenRLApi
+
+# Run with Docker
+docker compose up -d
+
+# Or run locally with Python
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python3 -m openrlapi.cli serve --port 8000</code></pre>
+
+  <h2 id="endpoints">Endpoints</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Method</th>
+        <th>Path</th>
+        <th>Query Params</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/items.json</code></td>
+        <td><code>l=LANG</code></td>
+        <td>Master catalog (~29 MB) with instant gzip level 9 delivery</td>
+      </tr>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/items.ver</code></td>
+        <td>—</td>
+        <td>Current game version manifest hash</td>
+      </tr>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/v2/rl/products</code></td>
+        <td><code>search</code>, <code>category</code>, <code>page</code>, <code>l</code></td>
+        <td>Paginated products list with search</td>
+      </tr>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/v2/rl/products/{id}</code></td>
+        <td><code>l=LANG</code></td>
+        <td>Single item by ID (e.g. <code>358</code>)</td>
+      </tr>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/v2/rl/categories</code></td>
+        <td>—</td>
+        <td>Item categories with counts</td>
+      </tr>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/v2/rl/attributes</code></td>
+        <td>—</td>
+        <td>Paint finishes and certifications</td>
+      </tr>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/titles.json</code></td>
+        <td><code>l=LANG</code></td>
+        <td>Player titles catalog from PsyNet</td>
+      </tr>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/v2/rl/titles</code></td>
+        <td><code>category</code>, <code>search</code>, <code>l</code></td>
+        <td>Paginated titles with color glow metadata</td>
+      </tr>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/v2/rl/titles/{id}</code></td>
+        <td><code>l=LANG</code></td>
+        <td>Single player title by ID or text</td>
+      </tr>
+      <tr>
+        <td><code>GET</code></td>
+        <td><code>/thumbnails/{file}.png</code></td>
+        <td>—</td>
+        <td>Static item thumbnail renders</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Examples</h2>
+  <pre><code># Query master catalog in Spanish with gzip
+curl -s "http://localhost:8000/items.json?l=ESN" -H "Accept-Encoding: gzip"
+
+# Query single item in Polish
+curl -s "http://localhost:8000/v2/rl/products/358?l=PL"
+
+# Query PsyNet title in Spanish
+curl -s "http://localhost:8000/v2/rl/titles/CRL_Analyst?l=ESN"</code></pre>
+
+  <h2 id="config">Configuration</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Variable</th>
+        <th>Default</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>OPENRL_HOST</code></td>
+        <td><code>0.0.0.0</code></td>
+        <td>Bind host address</td>
+      </tr>
+      <tr>
+        <td><code>OPENRL_PORT</code></td>
+        <td><code>8000</code></td>
+        <td>Bind port</td>
+      </tr>
+      <tr>
+        <td><code>OPENRL_WORKERS</code></td>
+        <td><code>1</code></td>
+        <td>Uvicorn worker count</td>
+      </tr>
+      <tr>
+        <td><code>OPENRL_RATE_LIMIT</code></td>
+        <td><code>300</code></td>
+        <td>Rate limit per minute per IP</td>
+      </tr>
+      <tr>
+        <td><code>OPENRL_DATA_DIR</code></td>
+        <td><code>./data</code></td>
+        <td>Directory storing JSON databases</td>
+      </tr>
+      <tr>
+        <td><code>OPENRL_THUMBNAILS_DIR</code></td>
+        <td><code>./thumbnails</code></td>
+        <td>Directory for extracted PNG thumbnails</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="cli">CLI</h2>
+  <pre><code>openrlapi serve [--host 0.0.0.0] [--port 8000] [--workers 4]
+openrlapi extract [--upk TAGame.upk] [--coalesced CookedPCConsole/]
+openrlapi sync-titles [--build-id ID]
+openrlapi extract-thumbs [--cooked-dir DIR] [--out DIR]
+openrlapi update [--app Sugar]</code></pre>
+
+  <footer>
+    <p>openrlapi &middot; <a href="https://github.com/bitsfdb/OpenRLApi">github.com/bitsfdb/OpenRLApi</a> &middot; MIT license &middot; Not affiliated with Psyonix LLC or Epic Games, Inc.</p>
+  </footer>
+</body>
+</html>
