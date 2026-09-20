@@ -533,8 +533,8 @@ async def hourly_sync_worker():
             stat = get_legendary_status()
             avail = stat.get("available_version")
             installed = stat.get("installed_version")
-            if not installed or (avail and avail != installed):
-                sync_rocket_league()
+            if avail and installed and avail != installed:
+                await asyncio.to_thread(sync_rocket_league)
             if hours % 24 == 0:
                 sync_titles_from_psynet()
         except asyncio.CancelledError:
