@@ -1,6 +1,6 @@
 # OpenRLApi
 
-A standalone, open-source Rocket League metadata, localized item catalog, player title, and asset API.
+A standalone, open-source Rocket League metadata, localized item catalog, player title, and asset API. OpenRLApi is used by [VelocityRL](https://github.com/bitsfdb/VelocityRL).
 
 OpenRLApi extracts game data directly from cooked Unreal Engine UPK packages and decrypted Coalesced binary files, synchronizes player titles from Psyonix's PsyNet services, and serves them over an HTTP API with in-memory gzip caching.
 
