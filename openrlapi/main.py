@@ -234,7 +234,7 @@ def _load_titles() -> dict[str, Any]:
         if not TITLES_FILE.exists():
             _titles_by_id = {}
             _titles_by_text = {}
-            return {"source": "PlayerTitleConfig", "category_count": 0, "title_count": 0, "categories": [], "titles": []}
+            return {"category_count": 0, "title_count": 0, "categories": [], "titles": []}
 
         loaded = json.loads(TITLES_FILE.read_text(encoding="utf-8"))
         by_id = {}

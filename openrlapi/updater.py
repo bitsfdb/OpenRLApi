@@ -87,7 +87,6 @@ def get_legendary_status() -> dict[str, Any]:
         ver_info = get_or_derive_build_id()
         status["psynet_build_id"] = ver_info.get("build_id")
         status["game_version"] = ver_info.get("game_version")
-        status["feature_set"] = ver_info.get("feature_set")
     except Exception:
         status["psynet_build_id"] = DEFAULT_PSYNET_BUILD_ID
 
@@ -393,9 +392,7 @@ def sync_titles_from_psynet(build_id: str | None = None) -> dict[str, Any]:
 
     categories_list = list(int_cats.values())
     payload = {
-        "source": "PlayerTitleConfig",
         "game_version": game_version,
-        "feature_set": feature_set,
         "category_count": len(categories_list),
         "title_count": len(processed_titles),
         "categories": categories_list,
@@ -410,9 +407,7 @@ def sync_titles_from_psynet(build_id: str | None = None) -> dict[str, Any]:
             for t in processed_titles
         ]
         loc_payload = {
-            "source": "PlayerTitleConfig",
             "game_version": game_version,
-            "feature_set": feature_set,
             "language": l_code,
             "category_count": len(categories_list),
             "title_count": len(loc_titles),
@@ -428,7 +423,6 @@ def sync_titles_from_psynet(build_id: str | None = None) -> dict[str, Any]:
         "category_count": len(categories_list),
         "build_id": build_id,
         "game_version": game_version,
-        "feature_set": feature_set,
     }
 
 
@@ -516,7 +510,6 @@ def sync_rocket_league(delete_upks_after: bool = False, force: bool = False) -> 
         "titles_count": titles_res.get("title_count", 0),
         "version": new_version,
         "build_id": ver_info.get("build_id"),
-        "feature_set": ver_info.get("feature_set"),
         "logs": logs
     }
 
