@@ -419,15 +419,15 @@ def get_game_version() -> str:
     return "260825.79374.526531"
 
 
-def generate(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
+def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
     existing_items = {}
     if output_file.exists():
         try:
-            data = json.loads(output_file.read_text(encoding="utf-8"))
-            for it in data.get("items", []) or data.get("Items", []):
-                item_id = it.get("id") if it.get("id") is not None else it.get("ID")
+            cached_data = json.loads(output_file.read_text(encoding="utf-8"))
+            for item in cached_data.get("items", []) or cached_data.get("Items", []):
+                item_id = item.get("id") if item.get("id") is not None else item.get("ID")
                 if item_id is not None:
-                    existing_items[int(item_id)] = it
+                    existing_items[int(item_id)] = item
         except Exception:
             pass
 
@@ -513,3 +513,5 @@ def generate(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text(json.dumps(skeleton, indent=2), encoding="utf-8")
     return skeleton
+
+generate = extract_catalog

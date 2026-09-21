@@ -9,37 +9,37 @@ from .config import THUMBNAILS_DIR, CACHE_DIR
 
 log = logging.getLogger("openrlapi.thumbnails")
 
-PREFIXES = (
+ASSET_PREFIXES = (
     "body_", "skin_", "wheel_", "hat_", "antenna_", "boost_", "explosion_",
     "paintfinish_", "playerbanner_", "avatarborder_", "flag_", "countryflag_",
     "ss_", "anthem_", "engineaudio_", "pennant_"
 )
 
 
-def _worker_extract_job(worker_id: int, upk_list: list[str], cooked_dir: Path, work_base: Path, output_dir: Path) -> int:
-    w_dir = work_base / f"w{worker_id}"
-    w_out = work_base / f"w{worker_id}_out"
-    shutil.rmtree(w_dir, ignore_errors=True)
-    shutil.rmtree(w_out, ignore_errors=True)
-    w_dir.mkdir(parents=True, exist_ok=True)
-    w_out.mkdir(parents=True, exist_ok=True)
+def _extract_upk_batch(worker_index: int, package_names: list[str], cooked_dir: Path, staging_dir: Path, output_dir: Path) -> int:
+    worker_workspace = staging_dir / f"w{worker_index}"
+    worker_output = staging_dir / f"w{worker_index}_out"
+    shutil.rmtree(worker_workspace, ignore_errors=True)
+    shutil.rmtree(worker_output, ignore_errors=True)
+    worker_workspace.mkdir(parents=True, exist_ok=True)
+    worker_output.mkdir(parents=True, exist_ok=True)
 
-    for name in upk_list:
-        target = w_dir / name
+    for package_name in package_names:
+        symlink_target = worker_workspace / package_name
         try:
-            target.symlink_to(cooked_dir / name)
+            symlink_target.symlink_to(cooked_dir / package_name)
         except OSError:
             pass
 
-    for name in upk_list:
+    for package_name in package_names:
         cmd = [
             "umodel",
             "-game=rocketleague",
             "-export",
             "-png",
-            f"-out={w_out}",
-            f"-path={w_dir}",
-            name
+            f"-out={worker_output}",
+            f"-path={worker_workspace}",
+            package_name
         ]
         try:
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
@@ -47,35 +47,35 @@ def _worker_extract_job(worker_id: int, upk_list: list[str], cooked_dir: Path, w
             pass
 
     extracted_count = 0
-    for p in w_out.rglob("*.png"):
-        stem = p.parent.parent.name
+    for image_path in worker_output.rglob("*.png"):
+        raw_stem = image_path.parent.parent.name
         for suffix in ("_T_SF", "_t_sf", "_T", "_t", "_SF", "_sf"):
-            if stem.endswith(suffix):
-                stem = stem[:-len(suffix)]
+            if raw_stem.endswith(suffix):
+                raw_stem = raw_stem[:-len(suffix)]
                 break
-        stem_lower = stem.lower()
+        normalized_stem = raw_stem.lower()
 
-        primary_dest = output_dir / f"{stem_lower}_t.png"
+        primary_dest = output_dir / f"{normalized_stem}_t.png"
         try:
-            shutil.copy2(p, primary_dest)
+            shutil.copy2(image_path, primary_dest)
             extracted_count += 1
 
-            raw_dest = output_dir / p.name.lower()
+            raw_dest = output_dir / image_path.name.lower()
             if not raw_dest.exists():
                 raw_dest.symlink_to(primary_dest.name)
 
-            for prefix in PREFIXES:
-                if stem_lower.startswith(prefix):
-                    stripped = stem_lower[len(prefix):]
-                    stripped_dest = output_dir / f"{stripped}_t.png"
+            for prefix in ASSET_PREFIXES:
+                if normalized_stem.startswith(prefix):
+                    stripped_stem = normalized_stem[len(prefix):]
+                    stripped_dest = output_dir / f"{stripped_stem}_t.png"
                     if not stripped_dest.exists():
                         stripped_dest.symlink_to(primary_dest.name)
                     break
         except OSError:
             pass
 
-    shutil.rmtree(w_dir, ignore_errors=True)
-    shutil.rmtree(w_out, ignore_errors=True)
+    shutil.rmtree(worker_workspace, ignore_errors=True)
+    shutil.rmtree(worker_output, ignore_errors=True)
     return extracted_count
 
 
@@ -89,34 +89,34 @@ def extract_thumbnails(cooked_dir: Path, output_dir: Path = THUMBNAILS_DIR) -> i
         return 0
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    work_base = CACHE_DIR / "tmp_extract_thumbs"
-    shutil.rmtree(work_base, ignore_errors=True)
-    work_base.mkdir(parents=True, exist_ok=True)
+    staging_dir = CACHE_DIR / "tmp_extract_thumbs"
+    shutil.rmtree(staging_dir, ignore_errors=True)
+    staging_dir.mkdir(parents=True, exist_ok=True)
 
-    upk_files = [
+    packages = [
         f.name for f in cooked_dir.iterdir()
         if f.is_file() and (f.name.endswith("_T_SF.upk") or f.name.endswith("_t_sf.upk") or "_t_" in f.name.lower())
     ]
-    log.info("Found %d thumbnail UPK packages in %s", len(upk_files), cooked_dir)
+    log.info("Found %d thumbnail UPK packages in %s", len(packages), cooked_dir)
 
-    num_workers = min(8, max(2, os.cpu_count() or 4))
-    chunks: list[list[str]] = [[] for _ in range(num_workers)]
-    for i, name in enumerate(upk_files):
-        chunks[i % num_workers].append(name)
+    worker_count = min(8, max(2, os.cpu_count() or 4))
+    package_batches: list[list[str]] = [[] for _ in range(worker_count)]
+    for index, package_name in enumerate(packages):
+        package_batches[index % worker_count].append(package_name)
 
     total_extracted = 0
-    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+    with ProcessPoolExecutor(max_workers=worker_count) as executor:
         futures = [
-            executor.submit(_worker_extract_job, i, chunks[i], cooked_dir, work_base, output_dir)
-            for i in range(num_workers)
-            if chunks[i]
+            executor.submit(_extract_upk_batch, i, package_batches[i], cooked_dir, staging_dir, output_dir)
+            for i in range(worker_count)
+            if package_batches[i]
         ]
-        for f in futures:
+        for future in futures:
             try:
-                total_extracted += f.result()
-            except Exception as e:
-                log.error("Worker extraction error: %s", e)
+                total_extracted += future.result()
+            except Exception as exc:
+                log.error("Worker extraction error: %s", exc)
 
-    shutil.rmtree(work_base, ignore_errors=True)
+    shutil.rmtree(staging_dir, ignore_errors=True)
     log.info("Extracted %d thumbnails into %s", total_extracted, output_dir)
     return total_extracted

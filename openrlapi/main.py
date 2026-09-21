@@ -20,72 +20,75 @@ from .config import (
     PORT, RATE_LIMIT_PER_MINUTE, CORS_ORIGINS,
     DATA_DIR, THUMBNAILS_DIR,
     ITEMS_FILE, TITLES_FILE, ITEMS_VER_FILE,
-    ALL_LANGUAGES, resolve_lang
+    ALL_LANGUAGES, resolve_language_code
 )
 from .models import (
     ProductResponse, ProductsListResponse,
     TitleResponse, TitlesListResponse,
     HealthResponse
 )
-from .extractor import generate
-from .updater import sync_titles_from_psynet, hourly_sync_worker
+from .extractor import extract_catalog
+from .updater import hourly_sync_worker
 
 log = logging.getLogger("openrlapi")
 
-_items_cache_by_lang: dict[str, tuple[bytes, bytes, float]] = {}
+_items_gzip_cache: dict[str, tuple[bytes, bytes, float]] = {}
 _items_lock = threading.Lock()
 
-_titles_cache_by_lang: dict[str, tuple[bytes, bytes, float]] = {}
-_v2_titles_by_lang: dict[str, tuple[bytes, bytes, float]] = {}
+_titles_gzip_cache: dict[str, tuple[bytes, bytes, float]] = {}
+_v2_titles_gzip_cache: dict[str, tuple[bytes, bytes, float]] = {}
 _titles_lock = threading.Lock()
 
-_data_cache: dict[str, Any] | None = None
-_cache_mtime: float = 0.0
+_items_catalog_cache: dict[str, Any] | None = None
+_items_cache_mtime: float = 0.0
 _items_by_id: dict[str, dict[str, Any]] = {}
-_reload_lock = threading.Lock()
+_items_reload_lock = threading.Lock()
 
-_titles_cache: dict[str, Any] | None = None
+_titles_catalog_cache: dict[str, Any] | None = None
 _titles_cache_mtime: float = 0.0
 _titles_by_id: dict[str, dict[str, Any]] = {}
 _titles_by_text: dict[str, dict[str, Any]] = {}
 _titles_reload_lock = threading.Lock()
 
+_existing_thumbnails_cache: set[str] | None = None
+_thumbnails_mtime: float = 0.0
+
 _QUALITY_NORMALIZE = {"VeryRare": "Very Rare", "BlackMarket": "Black Market"}
 
 
-def client_accepts_gzip(request: Request) -> bool:
-    ae = request.headers.get("accept-encoding", "")
-    if not ae:
+def request_accepts_gzip(request: Request) -> bool:
+    encoding_header = request.headers.get("accept-encoding", "")
+    if not encoding_header:
         return False
-    for part in ae.split(","):
-        part = part.strip().lower()
-        if not part:
+    for directive in encoding_header.split(","):
+        token = directive.strip().lower()
+        if not token:
             continue
-        enc = part.split(";")[0].strip()
-        if enc in ("gzip", "*"):
-            if ";q=0" in part.replace(" ", ""):
+        encoding_name = token.split(";")[0].strip()
+        if encoding_name in ("gzip", "*"):
+            if ";q=0" in token.replace(" ", ""):
                 return False
             return True
     return False
 
 
-def _resolve_lang_file(base_name: str, lang_code: str, fallback_file: Path) -> Path:
+def _resolve_catalog_file(prefix: str, lang_code: str, fallback_path: Path) -> Path:
     if lang_code == "INT":
-        return fallback_file
-    for candidate in (f"{base_name}_{lang_code}.json", f"{base_name}_{lang_code.lower()}.json"):
-        p = DATA_DIR / candidate
-        if p.exists():
-            return p
-    return fallback_file
+        return fallback_path
+    for filename in (f"{prefix}_{lang_code}.json", f"{prefix}_{lang_code.lower()}.json"):
+        candidate = DATA_DIR / filename
+        if candidate.exists():
+            return candidate
+    return fallback_path
 
 
-def _get_cached_gzip(
+def _read_gzip_cache(
     cache: dict[str, tuple[bytes, bytes, float]],
     file_path: Path,
     lang_code: str,
     lock: threading.Lock,
     fallback_code: str | None = None,
-    force: bool = False
+    force_refresh: bool = False
 ) -> tuple[bytes, bytes]:
     try:
         mtime = file_path.stat().st_mtime
@@ -93,7 +96,7 @@ def _get_cached_gzip(
         mtime = 0.0
 
     entry = cache.get(lang_code)
-    if not force and entry and mtime == entry[2] and mtime != 0.0:
+    if not force_refresh and entry and mtime == entry[2] and mtime != 0.0:
         return entry[0], entry[1]
 
     with lock:
@@ -103,58 +106,62 @@ def _get_cached_gzip(
         except OSError:
             mtime = 0.0
 
-        if not force and entry and mtime == entry[2] and mtime != 0.0:
+        if not force_refresh and entry and mtime == entry[2] and mtime != 0.0:
             return entry[0], entry[1]
 
         if not file_path.exists() or mtime == 0.0:
             if fallback_code and fallback_code != lang_code:
-                fb_file = _resolve_lang_file(file_path.stem.split("_")[0], fallback_code, ITEMS_FILE if "items" in file_path.name else TITLES_FILE)
-                return _get_cached_gzip(cache, fb_file, fallback_code, lock, force=force)
+                fallback_file = _resolve_catalog_file(
+                    file_path.stem.split("_")[0],
+                    fallback_code,
+                    ITEMS_FILE if "items" in file_path.name else TITLES_FILE
+                )
+                return _read_gzip_cache(cache, fallback_file, fallback_code, lock, force_refresh=force_refresh)
             return b"{}", b""
 
-        raw = file_path.read_bytes()
-        gz = gzip.compress(raw, compresslevel=9)
-        cache[lang_code] = (raw, gz, mtime)
-        return raw, gz
+        raw_bytes = file_path.read_bytes()
+        gzip_bytes = gzip.compress(raw_bytes, compresslevel=9)
+        cache[lang_code] = (raw_bytes, gzip_bytes, mtime)
+        return raw_bytes, gzip_bytes
 
 
-def _get_items_cache_for_lang(lang_code: str, force: bool = False) -> tuple[bytes, bytes]:
-    path = _resolve_lang_file("items", lang_code, ITEMS_FILE)
-    return _get_cached_gzip(_items_cache_by_lang, path, lang_code, _items_lock, fallback_code="INT", force=force)
+def _load_items_compressed(lang_code: str, force_refresh: bool = False) -> tuple[bytes, bytes]:
+    path = _resolve_catalog_file("items", lang_code, ITEMS_FILE)
+    return _read_gzip_cache(_items_gzip_cache, path, lang_code, _items_lock, fallback_code="INT", force_refresh=force_refresh)
 
 
-def _get_titles_cache_for_lang(lang_code: str, force: bool = False) -> tuple[bytes, bytes]:
-    path = _resolve_lang_file("titles", lang_code, TITLES_FILE)
-    return _get_cached_gzip(_titles_cache_by_lang, path, lang_code, _titles_lock, fallback_code="INT", force=force)
+def _load_titles_compressed(lang_code: str, force_refresh: bool = False) -> tuple[bytes, bytes]:
+    path = _resolve_catalog_file("titles", lang_code, TITLES_FILE)
+    return _read_gzip_cache(_titles_gzip_cache, path, lang_code, _titles_lock, fallback_code="INT", force_refresh=force_refresh)
 
 
-def _get_v2_titles_cache_for_lang(lang_code: str, force: bool = False) -> tuple[bytes, bytes]:
-    file_path = _resolve_lang_file("titles", lang_code, TITLES_FILE)
+def _load_v2_titles_compressed(lang_code: str, force_refresh: bool = False) -> tuple[bytes, bytes]:
+    file_path = _resolve_catalog_file("titles", lang_code, TITLES_FILE)
     try:
         mtime = file_path.stat().st_mtime
     except OSError:
         mtime = 0.0
 
-    entry = _v2_titles_by_lang.get(lang_code)
-    if not force and entry and mtime == entry[2] and mtime != 0.0:
+    entry = _v2_titles_gzip_cache.get(lang_code)
+    if not force_refresh and entry and mtime == entry[2] and mtime != 0.0:
         return entry[0], entry[1]
 
     with _titles_lock:
-        entry = _v2_titles_by_lang.get(lang_code)
+        entry = _v2_titles_gzip_cache.get(lang_code)
         try:
             mtime = file_path.stat().st_mtime
         except OSError:
             mtime = 0.0
 
-        if not force and entry and mtime == entry[2] and mtime != 0.0:
+        if not force_refresh and entry and mtime == entry[2] and mtime != 0.0:
             return entry[0], entry[1]
 
         if file_path.exists() and mtime != 0.0:
-            loaded = json.loads(file_path.read_text(encoding="utf-8"))
+            catalog = json.loads(file_path.read_text(encoding="utf-8"))
         else:
-            loaded = _load_titles()
+            catalog = _load_titles_catalog()
 
-        titles_list = loaded.get("titles", [])
+        titles_list = catalog.get("titles", [])
         v2_payload = {
             "meta": {
                 "returned": len(titles_list),
@@ -164,35 +171,35 @@ def _get_v2_titles_cache_for_lang(lang_code: str, force: bool = False) -> tuple[
                 "offset": 0,
             },
             "titles": titles_list,
-            "categories": loaded.get("categories", []),
+            "categories": catalog.get("categories", []),
         }
         v2_raw = json.dumps(v2_payload).encode("utf-8")
         v2_gz = gzip.compress(v2_raw, compresslevel=9)
-        _v2_titles_by_lang[lang_code] = (v2_raw, v2_gz, mtime)
+        _v2_titles_gzip_cache[lang_code] = (v2_raw, v2_gz, mtime)
         return v2_raw, v2_gz
 
 
-def _load_items() -> dict[str, Any]:
-    global _data_cache, _cache_mtime, _items_by_id
+def _load_items_catalog() -> dict[str, Any]:
+    global _items_catalog_cache, _items_cache_mtime, _items_by_id
     try:
         mtime = ITEMS_FILE.stat().st_mtime
     except FileNotFoundError:
         mtime = 0.0
 
-    if _data_cache is not None and mtime == _cache_mtime and mtime != 0.0:
-        return _data_cache
+    if _items_catalog_cache is not None and mtime == _items_cache_mtime and mtime != 0.0:
+        return _items_catalog_cache
 
-    with _reload_lock:
+    with _items_reload_lock:
         try:
             mtime = ITEMS_FILE.stat().st_mtime
         except FileNotFoundError:
             mtime = 0.0
 
-        if _data_cache is not None and mtime == _cache_mtime and mtime != 0.0:
-            return _data_cache
+        if _items_catalog_cache is not None and mtime == _items_cache_mtime and mtime != 0.0:
+            return _items_catalog_cache
 
         if mtime == 0.0 or not ITEMS_FILE.exists():
-            data = generate(ITEMS_FILE)
+            data = extract_catalog(ITEMS_FILE)
             mtime = ITEMS_FILE.stat().st_mtime
         else:
             data = json.loads(ITEMS_FILE.read_text(encoding="utf-8"))
@@ -200,27 +207,27 @@ def _load_items() -> dict[str, Any]:
         if "items" not in data and "Items" in data:
             data["items"] = data["Items"]
 
-        items_map = {}
-        for itm in data.get("items", []):
-            item_id = itm.get("id") if itm.get("id") is not None else itm.get("ID")
+        indexed_items = {}
+        for item in data.get("items", []):
+            item_id = item.get("id") if item.get("id") is not None else item.get("ID")
             if item_id is not None:
-                items_map[str(item_id).strip().lower()] = itm
+                indexed_items[str(item_id).strip().lower()] = item
 
-        _items_by_id = items_map
-        _data_cache = data
-        _cache_mtime = mtime
-        return _data_cache
+        _items_by_id = indexed_items
+        _items_catalog_cache = data
+        _items_cache_mtime = mtime
+        return _items_catalog_cache
 
 
-def _load_titles() -> dict[str, Any]:
-    global _titles_cache, _titles_cache_mtime, _titles_by_id, _titles_by_text
+def _load_titles_catalog() -> dict[str, Any]:
+    global _titles_catalog_cache, _titles_cache_mtime, _titles_by_id, _titles_by_text
     try:
         mtime = TITLES_FILE.stat().st_mtime
     except FileNotFoundError:
         mtime = 0.0
 
-    if _titles_cache is not None and mtime == _titles_cache_mtime:
-        return _titles_cache
+    if _titles_catalog_cache is not None and mtime == _titles_cache_mtime:
+        return _titles_catalog_cache
 
     with _titles_reload_lock:
         try:
@@ -228,8 +235,8 @@ def _load_titles() -> dict[str, Any]:
         except FileNotFoundError:
             mtime = 0.0
 
-        if _titles_cache is not None and mtime == _titles_cache_mtime:
-            return _titles_cache
+        if _titles_catalog_cache is not None and mtime == _titles_cache_mtime:
+            return _titles_catalog_cache
 
         if not TITLES_FILE.exists():
             _titles_by_id = {}
@@ -247,16 +254,12 @@ def _load_titles() -> dict[str, Any]:
 
         _titles_by_id = by_id
         _titles_by_text = by_text
-        _titles_cache = loaded
+        _titles_catalog_cache = loaded
         _titles_cache_mtime = mtime
-        return _titles_cache
+        return _titles_catalog_cache
 
 
-_existing_thumbnails_cache: set[str] | None = None
-_thumbnails_mtime: float = 0.0
-
-
-def _get_existing_thumbnails() -> set[str]:
+def _scan_available_thumbnails() -> set[str]:
     global _existing_thumbnails_cache, _thumbnails_mtime
     try:
         mtime = THUMBNAILS_DIR.stat().st_mtime
@@ -272,28 +275,28 @@ def _get_existing_thumbnails() -> set[str]:
     return _existing_thumbnails_cache
 
 
-def _thumbnail_url(item: dict[str, Any]) -> str | None:
-    existing = _get_existing_thumbnails()
-    if not existing:
+def _resolve_thumbnail_url(item: dict[str, Any]) -> str | None:
+    available = _scan_available_thumbnails()
+    if not available:
         return None
 
-    pkg = (item.get("AssetPackage") or item.get("asset_package") or item.get("internal_name") or "").strip()
-    if pkg:
-        stem = pkg.lower()
-        for sfx in (".upk", "_sf"):
-            if stem.endswith(sfx):
-                stem = stem[:-len(sfx)]
-        for cand in (f"{stem}_t.png", f"{stem}.png"):
-            if cand in existing:
-                return f"/thumbnails/{cand}"
+    package_name = (item.get("AssetPackage") or item.get("asset_package") or item.get("internal_name") or "").strip()
+    if package_name:
+        stem = package_name.lower()
+        for suffix in (".upk", "_sf"):
+            if stem.endswith(suffix):
+                stem = stem[:-len(suffix)]
+        for candidate in (f"{stem}_t.png", f"{stem}.png"):
+            if candidate in available:
+                return f"/thumbnails/{candidate}"
     return None
 
 
-def format_product(item: dict[str, Any], lang_key: str, full: bool = False) -> dict[str, Any]:
-    exclude = {"thumbnail_asset", "thumbnail_package", "thumbnail_base64"}
+def serialize_product(item: dict[str, Any], lang_key: str, full: bool = False) -> dict[str, Any]:
+    excluded_fields = {"thumbnail_asset", "thumbnail_package", "thumbnail_base64"}
     if not full:
-        exclude.add("translations")
-    formatted = {k: v for k, v in item.items() if k not in exclude}
+        excluded_fields.add("translations")
+    formatted = {k: v for k, v in item.items() if k not in excluded_fields}
 
     item_id = item.get("id") if item.get("id") is not None else item.get("ID")
     raw_name = item.get("name") or item.get("label") or item.get("Product") or ""
@@ -311,9 +314,23 @@ def format_product(item: dict[str, Any], lang_key: str, full: bool = False) -> d
     formatted["category"] = category
     formatted["internal_name"] = internal_name
     formatted["quality"] = _QUALITY_NORMALIZE.get(quality_raw, quality_raw)
-    formatted["thumbnail_url"] = _thumbnail_url(item)
+    formatted["thumbnail_url"] = _resolve_thumbnail_url(item)
 
     return formatted
+
+
+client_accepts_gzip = request_accepts_gzip
+_resolve_lang_file = _resolve_catalog_file
+_get_cached_gzip = _read_gzip_cache
+_get_items_cache_for_lang = _load_items_compressed
+_get_titles_cache_for_lang = _load_titles_compressed
+_get_v2_titles_cache_for_lang = _load_v2_titles_compressed
+_load_items = _load_items_catalog
+_load_titles = _load_titles_catalog
+_get_existing_thumbnails = _scan_available_thumbnails
+_thumbnail_url = _resolve_thumbnail_url
+format_product = serialize_product
+resolve_lang = resolve_language_code
 
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
@@ -327,35 +344,39 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         if request.url.path in ("/health", "/"):
             return await call_next(request)
 
-        ip = request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for") or (request.client.host if request.client else "127.0.0.1")
+        ip = (
+            request.headers.get("cf-connecting-ip")
+            or request.headers.get("x-forwarded-for")
+            or (request.client.host if request.client else "127.0.0.1")
+        )
         ip = ip.split(",")[0].strip()
 
         now = time.time()
         with self.lock:
-            window = [t for t in self.hits[ip] if now - t < 60]
-            if len(window) >= self.rpm:
+            active_window = [ts for ts in self.hits[ip] if now - ts < 60]
+            if len(active_window) >= self.rpm:
                 return Response(
                     content=json.dumps({"detail": "Rate limit exceeded"}),
                     status_code=429,
                     media_type="application/json"
                 )
-            window.append(now)
-            self.hits[ip] = window
+            active_window.append(now)
+            self.hits[ip] = active_window
 
         return await call_next(request)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _load_items()
-    _load_titles()
-    _get_items_cache_for_lang("INT")
-    _get_titles_cache_for_lang("INT")
-    _get_v2_titles_cache_for_lang("INT")
+    _load_items_catalog()
+    _load_titles_catalog()
+    _load_items_compressed("INT")
+    _load_titles_compressed("INT")
+    _load_v2_titles_compressed("INT")
 
-    update_task = asyncio.create_task(hourly_sync_worker())
+    sync_worker_task = asyncio.create_task(hourly_sync_worker())
     yield
-    update_task.cancel()
+    sync_worker_task.cancel()
 
 
 app = FastAPI(
@@ -387,14 +408,14 @@ def root():
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 def health():
-    data = _load_items()
-    titles = _load_titles()
-    ver = ITEMS_VER_FILE.read_text(encoding="utf-8").strip() if ITEMS_VER_FILE.exists() else "unknown"
+    items_store = _load_items_catalog()
+    titles_store = _load_titles_catalog()
+    version_manifest = ITEMS_VER_FILE.read_text(encoding="utf-8").strip() if ITEMS_VER_FILE.exists() else "unknown"
     return {
         "status": "ok",
-        "version": ver,
-        "items_count": len(data.get("items", [])),
-        "titles_count": len(titles.get("titles", [])),
+        "version": version_manifest,
+        "items_count": len(items_store.get("items", [])),
+        "titles_count": len(titles_store.get("titles", [])),
         "languages_supported": len(ALL_LANGUAGES),
     }
 
@@ -419,11 +440,11 @@ async def get_items_catalog(
     l: str | None = Query(None),
     lang: str | None = Query(None),
 ):
-    target_lang = resolve_lang(l or lang)
-    raw_bytes, gz_bytes = _get_items_cache_for_lang(target_lang)
+    target_lang = resolve_language_code(l or lang)
+    raw_bytes, gzip_bytes = _load_items_compressed(target_lang)
 
     is_head = request.method == "HEAD"
-    supports_gzip = client_accepts_gzip(request)
+    supports_gzip = request_accepts_gzip(request)
 
     headers = {
         "Content-Type": "application/json",
@@ -432,10 +453,10 @@ async def get_items_catalog(
         "Access-Control-Allow-Origin": "*",
     }
 
-    if supports_gzip and gz_bytes:
+    if supports_gzip and gzip_bytes:
         headers["Content-Encoding"] = "gzip"
-        headers["Content-Length"] = str(len(gz_bytes))
-        body = b"" if is_head else gz_bytes
+        headers["Content-Length"] = str(len(gzip_bytes))
+        body = b"" if is_head else gzip_bytes
     else:
         headers["Content-Length"] = str(len(raw_bytes))
         body = b"" if is_head else raw_bytes
@@ -454,53 +475,57 @@ def get_products(
     full: bool = Query(False),
     all: bool = Query(False),
 ):
-    data = _load_items()
-    items = data.get("items", [])
-    lang_key = resolve_lang(l or lang)
+    items_store = _load_items_catalog()
+    products = items_store.get("items", [])
+    lang_key = resolve_language_code(l or lang)
 
     if category:
-        cat_lower = category.lower()
-        items = [i for i in items if (i.get("category_id") or i.get("slot") or i.get("Slot") or "").lower() == cat_lower]
+        target_cat = category.lower()
+        products = [
+            item for item in products
+            if (item.get("category_id") or item.get("slot") or item.get("Slot") or "").lower() == target_cat
+        ]
 
     if search:
-        q = search.lower()
-        def _matches(itm: dict) -> bool:
-            trans = itm.get("translations", {})
-            loc_n = trans.get(lang_key) or trans.get(lang_key.lower()) or ""
-            if q in loc_n.lower():
+        search_query = search.lower()
+
+        def _product_matches_query(product_item: dict[str, Any]) -> bool:
+            translations = product_item.get("translations", {})
+            localized_label = translations.get(lang_key) or translations.get(lang_key.lower()) or ""
+            if search_query in localized_label.lower():
                 return True
-            default_n = itm.get("Product") or itm.get("name") or itm.get("label") or ""
-            if q in default_n.lower():
+            default_label = product_item.get("Product") or product_item.get("name") or product_item.get("label") or ""
+            if search_query in default_label.lower():
                 return True
-            pkg = itm.get("AssetPackage") or itm.get("asset_package") or itm.get("internal_name") or ""
-            if q in pkg.lower():
+            package_identifier = product_item.get("AssetPackage") or product_item.get("asset_package") or product_item.get("internal_name") or ""
+            if search_query in package_identifier.lower():
                 return True
-            for tr_val in trans.values():
-                if isinstance(tr_val, str) and q in tr_val.lower():
+            for translation_value in translations.values():
+                if isinstance(translation_value, str) and search_query in translation_value.lower():
                     return True
             return False
 
-        items = [i for i in items if _matches(i)]
+        products = [item for item in products if _product_matches_query(item)]
 
-    total = len(items)
+    total_matches = len(products)
     if all:
-        used_limit = total
+        effective_limit = total_matches
         offset = 0
     else:
-        used_limit = limit or 50
+        effective_limit = limit or 50
         if offset:
-            items = items[offset:]
-        if used_limit:
-            items = items[:used_limit]
+            products = products[offset:]
+        if effective_limit:
+            products = products[:effective_limit]
 
     return {
         "meta": {
-            "returned": len(items),
-            "total_filtered": total,
-            "limit": used_limit,
+            "returned": len(products),
+            "total_filtered": total_matches,
+            "limit": effective_limit,
             "offset": offset,
         },
-        "products": [format_product(i, lang_key, full=full) for i in items],
+        "products": [serialize_product(item, lang_key, full=full) for item in products],
     }
 
 
@@ -511,12 +536,12 @@ def get_product(
     lang: str | None = Query(None),
     full: bool = Query(False),
 ):
-    _load_items()
-    lang_key = resolve_lang(l or lang)
-    pid = product_id.strip().lower()
-    item = _items_by_id.get(pid)
+    _load_items_catalog()
+    lang_key = resolve_language_code(l or lang)
+    normalized_id = product_id.strip().lower()
+    item = _items_by_id.get(normalized_id)
     if item is not None:
-        return format_product(item, lang_key, full=full)
+        return serialize_product(item, lang_key, full=full)
     raise HTTPException(status_code=404, detail=f"Product '{product_id}' not found")
 
 
@@ -529,11 +554,11 @@ async def get_titles_catalog(
     l: str | None = Query(None),
     lang: str | None = Query(None),
 ):
-    target_lang = resolve_lang(l or lang)
-    raw_bytes, gz_bytes = _get_titles_cache_for_lang(target_lang)
+    target_lang = resolve_language_code(l or lang)
+    raw_bytes, gzip_bytes = _load_titles_compressed(target_lang)
 
     is_head = request.method == "HEAD"
-    supports_gzip = client_accepts_gzip(request)
+    supports_gzip = request_accepts_gzip(request)
 
     headers = {
         "Content-Type": "application/json",
@@ -542,10 +567,10 @@ async def get_titles_catalog(
         "Access-Control-Allow-Origin": "*",
     }
 
-    if supports_gzip and gz_bytes:
+    if supports_gzip and gzip_bytes:
         headers["Content-Encoding"] = "gzip"
-        headers["Content-Length"] = str(len(gz_bytes))
-        body = b"" if is_head else gz_bytes
+        headers["Content-Length"] = str(len(gzip_bytes))
+        body = b"" if is_head else gzip_bytes
     else:
         headers["Content-Length"] = str(len(raw_bytes))
         body = b"" if is_head else raw_bytes
@@ -567,13 +592,12 @@ def get_titles(
     offset: int = Query(0, ge=0),
     full: bool = Query(False),
 ):
-    lang_code = resolve_lang(l or lang)
+    lang_code = resolve_language_code(l or lang)
 
-    # Fast-path for unfiltered query
     if not category and not search and has_glow is None and has_color is None and not limit and not offset and not full:
-        v2_raw, v2_gz = _get_v2_titles_cache_for_lang(lang_code)
+        v2_raw, v2_gz = _load_v2_titles_compressed(lang_code)
         is_head = request.method == "HEAD"
-        supports_gzip = client_accepts_gzip(request)
+        supports_gzip = request_accepts_gzip(request)
         headers = {
             "Content-Type": "application/json",
             "Cache-Control": "public, max-age=86400, s-maxage=604800",
@@ -588,35 +612,38 @@ def get_titles(
             headers["Content-Length"] = str(len(v2_raw))
             return Response(content=b"" if is_head else v2_raw, status_code=200, headers=headers, media_type="application/json")
 
-    data = _load_titles()
-    raw_titles = data.get("titles", [])
+    titles_store = _load_titles_catalog()
+    raw_titles = titles_store.get("titles", [])
 
     titles = []
-    for t in raw_titles:
-        tr_text = (
-            t.get("translations", {}).get(lang_code)
-            or t.get("translations", {}).get(lang_code.lower())
-            or t.get("text", "")
+    for title_record in raw_titles:
+        translated_text = (
+            title_record.get("translations", {}).get(lang_code)
+            or title_record.get("translations", {}).get(lang_code.lower())
+            or title_record.get("text", "")
         )
-        item_copy = {k: v for k, v in t.items() if full or k != "translations"}
-        item_copy["text"] = tr_text
-        titles.append(item_copy)
+        title_entry = {k: v for k, v in title_record.items() if full or k != "translations"}
+        title_entry["text"] = translated_text
+        titles.append(title_entry)
 
     if category:
-        cat_lower = category.strip().lower()
-        titles = [t for t in titles if (t.get("category") or "").strip().lower() == cat_lower]
+        target_category = category.strip().lower()
+        titles = [title for title in titles if (title.get("category") or "").strip().lower() == target_category]
 
     if search:
-        q = search.strip().lower()
-        titles = [t for t in titles if q in (t.get("text") or "").lower() or q in (t.get("id") or "").lower()]
+        search_query = search.strip().lower()
+        titles = [
+            title for title in titles
+            if search_query in (title.get("text") or "").lower() or search_query in (title.get("id") or "").lower()
+        ]
 
     if has_glow is not None:
-        titles = [t for t in titles if bool(t.get("glow")) == has_glow]
+        titles = [title for title in titles if bool(title.get("glow")) == has_glow]
 
     if has_color is not None:
-        titles = [t for t in titles if bool(t.get("color")) == has_color]
+        titles = [title for title in titles if bool(title.get("color")) == has_color]
 
-    total = len(titles)
+    total_matching = len(titles)
     if offset:
         titles = titles[offset:]
     if limit:
@@ -625,8 +652,8 @@ def get_titles(
     return {
         "meta": {
             "returned": len(titles),
-            "total_filtered": total,
-            "total_titles": len(data.get("titles", [])),
+            "total_filtered": total_matching,
+            "total_titles": len(titles_store.get("titles", [])),
             "limit": limit,
             "offset": offset,
         },
@@ -636,10 +663,10 @@ def get_titles(
 
 @app.get("/v2/rl/titles/categories", tags=["Titles"])
 def get_title_categories():
-    data = _load_titles()
+    titles_store = _load_titles_catalog()
     return {
-        "category_count": len(data.get("categories", [])),
-        "categories": data.get("categories", []),
+        "category_count": len(titles_store.get("categories", [])),
+        "categories": titles_store.get("categories", []),
     }
 
 
@@ -650,28 +677,28 @@ def get_title(
     lang: str | None = Query(None),
     full: bool = Query(False),
 ):
-    _load_titles()
-    lang_code = resolve_lang(l or lang)
-    tid = title_id.strip().lower()
-    title = _titles_by_id.get(tid) or _titles_by_text.get(tid)
+    _load_titles_catalog()
+    lang_code = resolve_language_code(l or lang)
+    normalized_id = title_id.strip().lower()
+    title = _titles_by_id.get(normalized_id) or _titles_by_text.get(normalized_id)
     if title is not None:
-        tr_text = (
+        translated_text = (
             title.get("translations", {}).get(lang_code)
             or title.get("translations", {}).get(lang_code.lower())
             or title.get("text", "")
         )
-        res = {k: v for k, v in title.items() if full or k != "translations"}
-        res["text"] = tr_text
-        return res
+        response_payload = {k: v for k, v in title.items() if full or k != "translations"}
+        response_payload["text"] = translated_text
+        return response_payload
     raise HTTPException(status_code=404, detail=f"Title '{title_id}' not found")
 
 
 @app.get("/v2/rl/categories", tags=["Metadata"])
 def get_categories():
-    data = _load_items()
+    items_store = _load_items_catalog()
     counts: dict[str, int] = defaultdict(int)
-    for i in data.get("items", []):
-        slot = i.get("slot") or i.get("category_id") or i.get("Slot") or "Unknown"
+    for item in items_store.get("items", []):
+        slot = item.get("slot") or item.get("category_id") or item.get("Slot") or "Unknown"
         counts[slot] += 1
     return {"categories": dict(sorted(counts.items()))}
 
@@ -687,7 +714,7 @@ def get_attributes():
 
 @app.post("/v2/rl/refresh", tags=["Admin"])
 def refresh_catalog():
-    data = generate(ITEMS_FILE)
-    _load_items()
-    _get_items_cache_for_lang("INT", force=True)
-    return {"status": "ok", "items_count": len(data.get("items", []))}
+    catalog_data = extract_catalog(ITEMS_FILE)
+    _load_items_catalog()
+    _load_items_compressed("INT", force_refresh=True)
+    return {"status": "ok", "items_count": len(catalog_data.get("items", []))}
