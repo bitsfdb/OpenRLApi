@@ -29,10 +29,14 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
 ENABLE_REDIS = os.getenv("OPENRL_ENABLE_REDIS", "false").lower() in ("true", "1", "yes")
 
+# The Coalesced AES key is static and identical across all Rocket League installations/platforms.
+# It is baked directly into the code as a constant while maintaining the COALESCED_AES_KEY variable.
+COALESCED_AES_KEY_STATIC = "14wySpRClDxtZc6YgYVMQWiZIgzHoUZAk5uWPJMqb68="
 COALESCED_AES_KEY_B64 = os.getenv(
     "COALESCED_AES_KEY",
-    "14wySpRClDxtZc6YgYVMQWiZIgzHoUZAk5uWPJMqb68="
+    COALESCED_AES_KEY_STATIC
 )
+COALESCED_AES_KEY = COALESCED_AES_KEY_B64
 DEFAULT_PSYNET_BUILD_ID = os.getenv("DEFAULT_PSYNET_BUILD_ID", "-1887694083")
 DEFAULT_GAME_VERSION = os.getenv("DEFAULT_GAME_VERSION", "260825.79374.526531")
 EPIC_APP_NAME = os.getenv("EPIC_APP_NAME", "Sugar")

@@ -512,7 +512,7 @@ OpenRLApi can be configured using environment variables or a `.env` file located
 | `OPENRL_DATA_DIR` | `./data` | Directory containing JSON databases and `items.ver` |
 | `OPENRL_THUMBNAILS_DIR`| `./thumbnails` | Directory containing extracted PNG item renders |
 | `OPENRL_GAMES_DIR` | `./games` | Directory holding downloaded game manifests & UPK files |
-| `COALESCED_AES_KEY` | *(256-bit AES)* | AES-256 base64 key used to decrypt Coalesced localization files |
+| `COALESCED_AES_KEY` | `14wySp...` (Static) | Static AES-256 base64 key embedded directly in the codebase. Identical across all game installations and platforms; configurable via variable. |
 | `DEFAULT_PSYNET_BUILD_ID`| `-1887694083`| Default build identifier for querying Psyonix PsyNet APIs |
 | `DEFAULT_GAME_VERSION` | `260825.79374.526531` | Fallback version string when `items.ver` is missing |
 | `EPIC_APP_NAME` | `Sugar` | Epic Games CDN catalog application identifier |

@@ -192,6 +192,6 @@ Use `?l=<CODE>` or `?lang=<CODE>` on any catalog, product, or title endpoint:
 | `OPENRL_DATA_DIR` | `./data` | Path to data JSON files |
 | `OPENRL_THUMBNAILS_DIR`| `./thumbnails` | Path to PNG thumbnails |
 | `OPENRL_GAMES_DIR` | `./games` | Game manifests and UPK files |
-| `COALESCED_AES_KEY` | *(256-bit AES)* | Decryption key for Coalesced language files |
+| `COALESCED_AES_KEY` | `14wySp...` (Static) | Static AES-256 base64 key built into code; universal and identical across all game installations and platforms. |
 | `DEFAULT_PSYNET_BUILD_ID`| `-1887694083` | Default build ID for PsyNet title requests |
 | `DEFAULT_GAME_VERSION` | `260825.79374.526531` | Fallback version string |
