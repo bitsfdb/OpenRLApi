@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>openrlapi</title>
+  <title>OpenRLApi Documentation</title>
   <style>
     :root {
       --bg: #fff;
@@ -12,6 +12,8 @@
       --border: #e5e5e5;
       --code-bg: #f6f8fa;
       --link: #0969da;
+      --badge-bg: #eef2ff;
+      --badge-fg: #4338ca;
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -21,10 +23,12 @@
         --border: #30363d;
         --code-bg: #161b22;
         --link: #58a6ff;
+        --badge-bg: #1e1b4b;
+        --badge-fg: #a5b4fc;
       }
     }
     body {
-      max-width: 740px;
+      max-width: 800px;
       margin: 40px auto;
       padding: 0 20px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -32,11 +36,11 @@
       color: var(--fg);
       background: var(--bg);
     }
-    h1, h2, h3 { line-height: 1.3; margin-top: 1.5em; margin-bottom: 0.5em; font-weight: 600; }
-    h1 { font-size: 1.8em; margin-top: 0; }
-    h2 { font-size: 1.25em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
-    h3 { font-size: 1.05em; }
-    p, ul, ol, table, pre { margin-bottom: 1em; }
+    h1, h2, h3, h4 { line-height: 1.3; margin-top: 1.5em; margin-bottom: 0.5em; font-weight: 600; }
+    h1 { font-size: 2em; margin-top: 0; }
+    h2 { font-size: 1.35em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+    h3 { font-size: 1.1em; }
+    p, ul, ol, table, pre { margin-bottom: 1.1em; }
     ul, ol { padding-left: 1.5em; }
     li { margin-bottom: 0.25em; }
     a { color: var(--link); text-decoration: none; }
@@ -59,130 +63,246 @@
     table { width: 100%; border-collapse: collapse; margin-top: 1em; font-size: 0.9em; }
     th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
     th { font-weight: 600; }
-    .nav { margin-bottom: 2em; font-size: 0.9em; color: var(--muted); }
-    .nav a { margin-right: 14px; }
+    .badge {
+      display: inline-block;
+      padding: 0.15em 0.5em;
+      font-size: 0.75em;
+      font-weight: 600;
+      border-radius: 4px;
+      background: var(--badge-bg);
+      color: var(--badge-fg);
+      text-transform: uppercase;
+    }
+    .nav { margin-bottom: 2em; font-size: 0.9em; color: var(--muted); display: flex; flex-wrap: wrap; gap: 14px; }
+    .note-box {
+      border-left: 4px solid var(--link);
+      background: var(--code-bg);
+      padding: 12px 16px;
+      border-radius: 0 6px 6px 0;
+      margin-bottom: 1.2em;
+    }
     footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid var(--border); font-size: 0.85em; color: var(--muted); }
   </style>
 </head>
 <body>
   <div class="nav">
     <a href="https://github.com/bitsfdb/OpenRLApi">GitHub</a>
-    <a href="#features">Features</a>
-    <a href="#quickstart">Quickstart</a>
+    <a href="#demo">Live Demo</a>
+    <a href="#ratelimit">Rate Limiting</a>
     <a href="#endpoints">Endpoints</a>
+    <a href="#localization">Languages</a>
     <a href="#config">Config</a>
     <a href="#cli">CLI</a>
   </div>
 
-  <h1>openrlapi</h1>
-  <p>Self-contained, open-source Rocket League item catalog and asset API. Extracts UPK binaries and decrypted Coalesced files, parses game metadata, and serves endpoints with in-memory gzip caching.</p>
+  <h1>OpenRLApi</h1>
+  <p>Self-contained, high-performance, open-source Rocket League item catalog, metadata, player title, and asset API. Extracts UPK binaries and decrypted Coalesced files, parses game metadata, and delivers endpoints with zero-copy in-memory gzip caching.</p>
+
+  <div class="note-box">
+    <strong>VelocityRL Integration:</strong> OpenRLApi is used by the <a href="https://github.com/bitsfdb/VelocityRL" target="_blank" rel="noopener">VelocityRL</a> project to power item catalogs, paint finishes, certifications, player titles, and asset previews.
+  </div>
 
   <h2 id="features">Features</h2>
   <ul>
-    <li><strong>12 languages:</strong> Full item names and player titles localized across <code>INT</code>, <code>DEU</code>, <code>DUT</code>, <code>ESN</code>, <code>FRA</code>, <code>ITA</code>, <code>JPN</code>, <code>KOR</code>, <code>POL</code>, <code>PTB</code>, <code>RUS</code>, <code>TRK</code> via <code>?l=</code>.</li>
-    <li><strong>Zero-copy in-memory caching:</strong> Pre-compressed gzip level 9 responses served in &lt;1ms.</li>
-    <li><strong>Preserving updater:</strong> Downloads and extracts game binaries without deletion, parses PE headers for GPsyonixBuildID, and auto-syncs <code>items.ver</code>.</li>
+    <li><strong>12 languages:</strong> Full item names and player titles localized across <code>INT</code>, <code>DEU</code>, <code>DUT</code>, <code>ESN</code>, <code>FRA</code>, <code>ITA</code>, <code>JPN</code>, <code>KOR</code>, <code>POL</code>, <code>PTB</code>, <code>RUS</code>, <code>TRK</code> via <code>?l=</code> or <code>?lang=</code>.</li>
+    <li><strong>Zero-copy in-memory caching:</strong> Pre-compressed Level-9 gzip responses served straight from memory in &lt;1ms.</li>
+    <li><strong>Preserving updater:</strong> Downloads and extracts game binaries from Epic CDN manifests without deletion, parses PE headers for GPsyonixBuildID, and auto-syncs <code>items.ver</code>.</li>
+    <li><strong>PsyNet sync:</strong> Synchronizes player titles, category assignments, glow styling, and hex colors directly from Psyonix backend services.</li>
     <li><strong>Thumbnails:</strong> Batch texture extraction from <code>_T_SF.upk</code> packages via umodel into normalized PNGs.</li>
-    <li><strong>Portability:</strong> Zero hardcoded server paths. Runs via Docker or standalone CLI.</li>
+    <li><strong>Self-contained:</strong> Zero hardcoded paths. Runs via Docker, standalone CLI, or ASGI runner.</li>
   </ul>
 
-  <h2 id="quickstart">Quickstart</h2>
-  <pre><code># Clone repository
+  <h2 id="demo">Interactive Demo & Quickstart</h2>
+  <p>You can try out OpenRLApi through the public live demo or run a local instance.</p>
+
+  <h3>Live Demo</h3>
+  <ul>
+    <li><strong>Base URL:</strong> <code>https://api.velocityrl.tech</code></li>
+    <li><strong>Interactive Swagger UI:</strong> <a href="https://api.velocityrl.tech/docs" target="_blank" rel="noopener">https://api.velocityrl.tech/docs</a></li>
+    <li><strong>ReDoc Reference:</strong> <a href="https://api.velocityrl.tech/redoc" target="_blank" rel="noopener">https://api.velocityrl.tech/redoc</a></li>
+    <li><strong>Health Endpoint:</strong> <code>https://api.velocityrl.tech/health</code></li>
+  </ul>
+
+  <h3>Local Demo Setup</h3>
+  <pre><code># Option 1: Docker
 git clone https://github.com/bitsfdb/OpenRLApi.git
 cd OpenRLApi
-
-# Run with Docker
 docker compose up -d
 
-# Or run locally with Python
+# Option 2: Local Python
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-python3 -m openrlapi.cli serve --port 8000</code></pre>
+pip install -e .
+openrlapi serve --port 8000</code></pre>
+  <p>Once started, open <a href="http://localhost:8000/docs">http://localhost:8000/docs</a> to test endpoints interactively.</p>
 
-  <h2 id="endpoints">Endpoints</h2>
+  <h3>Demo cURL Commands</h3>
+  <pre><code># 1. Check API status and catalog counts
+curl -s "https://api.velocityrl.tech/health"
+
+# 2. Query Goldstone wheels in Spanish (item ID 358)
+curl -s "https://api.velocityrl.tech/v2/rl/products/358?l=ESN"
+
+# 3. Search items with pagination
+curl -s "https://api.velocityrl.tech/v2/rl/products?search=Octane&limit=3"
+
+# 4. Query PsyNet title with custom colors & glow in Spanish
+curl -s "https://api.velocityrl.tech/v2/rl/titles/CRL_Analyst?l=ESN"
+
+# 5. Fetch full pre-compressed catalog via Gzip
+curl -s "https://api.velocityrl.tech/items.json?l=INT" -H "Accept-Encoding: gzip" --output items.json.gz</code></pre>
+
+  <h2 id="ratelimit">API Rate Limiting</h2>
+  <p>To protect service stability and ensure fair consumption, OpenRLApi implements an in-memory sliding-window IP rate limiter (<code>RateLimiterMiddleware</code>).</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Setting</th>
+        <th>Value</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Default Rate Limit</td>
+        <td><code>300 req / min</code></td>
+        <td>Max requests allowed per 60-second sliding window per IP. Configurable via <code>OPENRL_RATE_LIMIT</code>.</td>
+      </tr>
+      <tr>
+        <td>Exempt Endpoints</td>
+        <td><code>/</code>, <code>/health</code></td>
+        <td>Health checks and root probe routes bypass rate limiting.</td>
+      </tr>
+      <tr>
+        <td>IP Resolution</td>
+        <td><code>CF-Connecting-IP</code>, <code>X-Forwarded-For</code></td>
+        <td>Detects genuine client IP behind Cloudflare or reverse proxies, falling back to socket IP.</td>
+      </tr>
+      <tr>
+        <td>Exceeded Status</td>
+        <td><code>HTTP 429 Too Many Requests</code></td>
+        <td>Returns JSON: <code>{"detail": "Rate limit exceeded"}</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Consumption Guidelines</h3>
+  <ul>
+    <li><strong>Use Gzip:</strong> Always send <code>Accept-Encoding: gzip</code> headers for master catalog endpoints (<code>/items.json</code>, <code>/titles.json</code>).</li>
+    <li><strong>Client-Side Caching:</strong> Honor the <code>Cache-Control: public, max-age=86400, s-maxage=604800</code> header.</li>
+    <li><strong>Check Manifests First:</strong> Compare <code>/items.ver</code> to verify if new game updates exist before downloading the full catalog.</li>
+  </ul>
+
+  <h2 id="endpoints">API Endpoints Reference</h2>
   <table>
     <thead>
       <tr>
         <th>Method</th>
-        <th>Path</th>
+        <th>Endpoint</th>
         <th>Query Params</th>
         <th>Description</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td><code>GET</code></td>
-        <td><code>/items.json</code></td>
-        <td><code>l=LANG</code></td>
-        <td>Master catalog (~29 MB) with instant gzip level 9 delivery</td>
+        <td><span class="badge">GET</span></td>
+        <td><code>/health</code></td>
+        <td>—</td>
+        <td>Service health, item counts, title counts, and build version</td>
       </tr>
       <tr>
-        <td><code>GET</code></td>
+        <td><span class="badge">GET</span></td>
         <td><code>/items.ver</code></td>
         <td>—</td>
-        <td>Current game version manifest hash</td>
+        <td>Current game version manifest hash string (e.g. <code>260825.79374.526531</code>)</td>
       </tr>
       <tr>
-        <td><code>GET</code></td>
+        <td><span class="badge">GET</span></td>
+        <td><code>/items.json</code><br><code>/v2/rl/items.json</code></td>
+        <td><code>l</code>, <code>lang</code></td>
+        <td>Master catalog (~29 MB) with instant Level-9 gzip delivery</td>
+      </tr>
+      <tr>
+        <td><span class="badge">GET</span></td>
         <td><code>/v2/rl/products</code></td>
-        <td><code>search</code>, <code>category</code>, <code>page</code>, <code>l</code></td>
-        <td>Paginated products list with search</td>
+        <td><code>search</code>, <code>category</code>, <code>l</code>, <code>limit</code>, <code>offset</code>, <code>full</code>, <code>all</code></td>
+        <td>Paginated products list with search and category filters</td>
       </tr>
       <tr>
-        <td><code>GET</code></td>
+        <td><span class="badge">GET</span></td>
         <td><code>/v2/rl/products/{id}</code></td>
-        <td><code>l=LANG</code></td>
+        <td><code>l</code>, <code>lang</code>, <code>full</code></td>
         <td>Single item by ID (e.g. <code>358</code>)</td>
       </tr>
       <tr>
-        <td><code>GET</code></td>
+        <td><span class="badge">GET</span></td>
+        <td><code>/titles.json</code><br><code>/v2/rl/titles.json</code></td>
+        <td><code>l</code>, <code>lang</code></td>
+        <td>Master player titles catalog from PsyNet with in-memory gzip</td>
+      </tr>
+      <tr>
+        <td><span class="badge">GET</span></td>
+        <td><code>/v2/rl/titles</code></td>
+        <td><code>category</code>, <code>search</code>, <code>has_glow</code>, <code>has_color</code>, <code>l</code>, <code>limit</code>, <code>offset</code>, <code>full</code></td>
+        <td>Paginated titles with color and glow metadata</td>
+      </tr>
+      <tr>
+        <td><span class="badge">GET</span></td>
+        <td><code>/v2/rl/titles/{id}</code></td>
+        <td><code>l</code>, <code>lang</code>, <code>full</code></td>
+        <td>Single player title by ID or text</td>
+      </tr>
+      <tr>
+        <td><span class="badge">GET</span></td>
+        <td><code>/v2/rl/titles/categories</code></td>
+        <td>—</td>
+        <td>Title categories and styling defaults</td>
+      </tr>
+      <tr>
+        <td><span class="badge">GET</span></td>
         <td><code>/v2/rl/categories</code></td>
         <td>—</td>
         <td>Item categories with counts</td>
       </tr>
       <tr>
-        <td><code>GET</code></td>
+        <td><span class="badge">GET</span></td>
         <td><code>/v2/rl/attributes</code></td>
         <td>—</td>
-        <td>Paint finishes and certifications</td>
+        <td>Paint finishes and certifications dictionaries</td>
       </tr>
       <tr>
-        <td><code>GET</code></td>
-        <td><code>/titles.json</code></td>
-        <td><code>l=LANG</code></td>
-        <td>Player titles catalog from PsyNet</td>
-      </tr>
-      <tr>
-        <td><code>GET</code></td>
-        <td><code>/v2/rl/titles</code></td>
-        <td><code>category</code>, <code>search</code>, <code>l</code></td>
-        <td>Paginated titles with color glow metadata</td>
-      </tr>
-      <tr>
-        <td><code>GET</code></td>
-        <td><code>/v2/rl/titles/{id}</code></td>
-        <td><code>l=LANG</code></td>
-        <td>Single player title by ID or text</td>
-      </tr>
-      <tr>
-        <td><code>GET</code></td>
+        <td><span class="badge">GET</span></td>
         <td><code>/thumbnails/{file}.png</code></td>
         <td>—</td>
-        <td>Static item thumbnail renders</td>
+        <td>Static item thumbnail renders (cached 30 days)</td>
+      </tr>
+      <tr>
+        <td><span class="badge">POST</span></td>
+        <td><code>/v2/rl/refresh</code></td>
+        <td>—</td>
+        <td>Triggers catalog re-read and in-memory cache regeneration</td>
       </tr>
     </tbody>
   </table>
 
-  <h2>Examples</h2>
-  <pre><code># Query master catalog in Spanish with gzip
-curl -s "http://localhost:8000/items.json?l=ESN" -H "Accept-Encoding: gzip"
-
-# Query single item in Polish
-curl -s "http://localhost:8000/v2/rl/products/358?l=PL"
-
-# Query PsyNet title in Spanish
-curl -s "http://localhost:8000/v2/rl/titles/CRL_Analyst?l=ESN"</code></pre>
+  <h2 id="localization">Language Localization</h2>
+  <p>Pass the language code in the <code>?l=</code> or <code>?lang=</code> parameter. All 12 game languages are fully supported:</p>
+  <ul>
+    <li><code>INT</code> (English, aliases: <code>en</code>, <code>eng</code>, <code>english</code>)</li>
+    <li><code>DEU</code> (German, aliases: <code>de</code>, <code>ger</code>, <code>german</code>)</li>
+    <li><code>DUT</code> (Dutch, aliases: <code>nl</code>, <code>nld</code>, <code>dutch</code>)</li>
+    <li><code>ESN</code> (Spanish, aliases: <code>es</code>, <code>spa</code>, <code>spanish</code>)</li>
+    <li><code>FRA</code> (French, aliases: <code>fr</code>, <code>fre</code>, <code>french</code>)</li>
+    <li><code>ITA</code> (Italian, aliases: <code>it</code>, <code>italian</code>)</li>
+    <li><code>JPN</code> (Japanese, aliases: <code>ja</code>, <code>jp</code>, <code>japanese</code>)</li>
+    <li><code>KOR</code> (Korean, aliases: <code>ko</code>, <code>kr</code>, <code>korean</code>)</li>
+    <li><code>POL</code> (Polish, aliases: <code>pl</code>, <code>polish</code>)</li>
+    <li><code>PTB</code> (Portuguese - Brazil, aliases: <code>pt</code>, <code>por</code>, <code>br</code>)</li>
+    <li><code>RUS</code> (Russian, aliases: <code>ru</code>, <code>russian</code>)</li>
+    <li><code>TRK</code> (Turkish, aliases: <code>tr</code>, <code>tur</code>, <code>turkish</code>)</li>
+  </ul>
 
   <h2 id="config">Configuration</h2>
   <table>
@@ -212,7 +332,7 @@ curl -s "http://localhost:8000/v2/rl/titles/CRL_Analyst?l=ESN"</code></pre>
       <tr>
         <td><code>OPENRL_RATE_LIMIT</code></td>
         <td><code>300</code></td>
-        <td>Rate limit per minute per IP</td>
+        <td>Rate limit per minute per client IP</td>
       </tr>
       <tr>
         <td><code>OPENRL_DATA_DIR</code></td>
@@ -224,18 +344,32 @@ curl -s "http://localhost:8000/v2/rl/titles/CRL_Analyst?l=ESN"</code></pre>
         <td><code>./thumbnails</code></td>
         <td>Directory for extracted PNG thumbnails</td>
       </tr>
+      <tr>
+        <td><code>COALESCED_AES_KEY</code></td>
+        <td><em>(256-bit AES)</em></td>
+        <td>AES key for decrypting Coalesced binary language files</td>
+      </tr>
     </tbody>
   </table>
 
-  <h2 id="cli">CLI</h2>
-  <pre><code>openrlapi serve [--host 0.0.0.0] [--port 8000] [--workers 4]
+  <h2 id="cli">CLI Commands</h2>
+  <pre><code># Run API server
+openrlapi serve [--host 0.0.0.0] [--port 8000] [--workers 4]
+
+# Extract items and translations from game packages
 openrlapi extract [--upk TAGame.upk] [--coalesced CookedPCConsole/]
+
+# Sync player titles from PsyNet
 openrlapi sync-titles [--build-id ID]
+
+# Extract PNG thumbnails from UPKs via umodel
 openrlapi extract-thumbs [--cooked-dir DIR] [--out DIR]
+
+# Run preserving updater against Epic CDN
 openrlapi update [--app Sugar]</code></pre>
 
   <footer>
-    <p>openrlapi &middot; <a href="https://github.com/bitsfdb/OpenRLApi">github.com/bitsfdb/OpenRLApi</a> &middot; MIT license &middot; Not affiliated with Psyonix LLC or Epic Games, Inc.</p>
+    <p>OpenRLApi &middot; <a href="https://github.com/bitsfdb/OpenRLApi">github.com/bitsfdb/OpenRLApi</a> &middot; MIT License &middot; Powers <a href="https://github.com/bitsfdb/VelocityRL">VelocityRL</a> metadata &middot; Not affiliated with Psyonix LLC or Epic Games, Inc.</p>
   </footer>
 </body>
 </html>
