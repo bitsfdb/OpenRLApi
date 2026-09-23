@@ -398,8 +398,6 @@ def sync_titles_from_psynet(build_id: str | None = None) -> dict[str, Any]:
         "category_count": len(categories_list),
         "title_count": len(clean_titles),
         "available_locales": available_locales,
-        "avaliable_locales": available_locales,
-        "languages": available_locales,
         "categories": categories_list,
         "titles": clean_titles,
     }
@@ -409,8 +407,6 @@ def sync_titles_from_psynet(build_id: str | None = None) -> dict[str, Any]:
         "category_count": len(categories_list),
         "title_count": len(processed_titles),
         "available_locales": available_locales,
-        "avaliable_locales": available_locales,
-        "languages": available_locales,
         "categories": categories_list,
         "titles": processed_titles,
     }
@@ -432,8 +428,6 @@ def sync_titles_from_psynet(build_id: str | None = None) -> dict[str, Any]:
             "category_count": len(categories_list),
             "title_count": len(loc_titles),
             "available_locales": available_locales,
-            "avaliable_locales": available_locales,
-            "languages": available_locales,
             "categories": categories_list,
             "titles": loc_titles,
         }

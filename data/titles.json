@@ -16,34 +16,6 @@
     "RUS",
     "TRK"
   ],
-  "avaliable_locales": [
-    "INT",
-    "DEU",
-    "DUT",
-    "ESN",
-    "FRA",
-    "ITA",
-    "JPN",
-    "KOR",
-    "POL",
-    "PTB",
-    "RUS",
-    "TRK"
-  ],
-  "languages": [
-    "INT",
-    "DEU",
-    "DUT",
-    "ESN",
-    "FRA",
-    "ITA",
-    "JPN",
-    "KOR",
-    "POL",
-    "PTB",
-    "RUS",
-    "TRK"
-  ],
   "categories": [
     {
       "ID": "Developer",

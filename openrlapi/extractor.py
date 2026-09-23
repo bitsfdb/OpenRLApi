@@ -448,7 +448,6 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
             available_locales = list(ALL_LANGUAGES)
 
             payload = {
-                "Items": clean_items,
                 "items": clean_items,
                 "meta": {
                     "game_version": game_ver,
@@ -456,14 +455,11 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
                     "generated_at": int(time.time()),
                     "total_items": len(clean_items),
                     "available_locales": available_locales,
-                    "avaliable_locales": available_locales,
-                    "languages": available_locales,
                     "categories": {}
                 }
             }
 
             master_payload = {
-                "Items": items,
                 "items": items,
                 "meta": {
                     "game_version": game_ver,
@@ -471,8 +467,6 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
                     "generated_at": int(time.time()),
                     "total_items": len(items),
                     "available_locales": available_locales,
-                    "avaliable_locales": available_locales,
-                    "languages": available_locales,
                     "categories": {}
                 }
             }
@@ -487,14 +481,12 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
             for lang_code in ALL_LANGUAGES:
                 localized_items = []
                 for it in items:
-                    tr_name = it.get("translations", {}).get(lang_code) or it.get("Product") or it.get("name") or ""
+                    tr_name = it.get("translations", {}).get(lang_code) or it.get("Product") or ""
                     rec_loc = {k: v for k, v in it.items() if k != "translations"}
                     rec_loc["Product"] = tr_name
-                    rec_loc["name"] = tr_name
                     localized_items.append(rec_loc)
 
                 loc_payload = {
-                    "Items": localized_items,
                     "items": localized_items,
                     "meta": {
                         "game_version": game_ver,
@@ -502,8 +494,6 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
                         "generated_at": int(time.time()),
                         "total_items": len(localized_items),
                         "available_locales": available_locales,
-                        "avaliable_locales": available_locales,
-                        "languages": available_locales,
                     }
                 }
                 (DATA_DIR / f"items_{lang_code}.json").write_text(json.dumps(loc_payload, indent=2), encoding="utf-8")
@@ -517,7 +507,6 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
         clean_items = [{k: v for k, v in it.items() if k != "translations"} for it in items]
         available_locales = list(ALL_LANGUAGES)
         payload = {
-            "Items": clean_items,
             "items": clean_items,
             "meta": {
                 "game_version": game_ver,
@@ -525,8 +514,6 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
                 "generated_at": int(time.time()),
                 "total_items": len(clean_items),
                 "available_locales": available_locales,
-                "avaliable_locales": available_locales,
-                "languages": available_locales,
                 "categories": {}
             }
         }
