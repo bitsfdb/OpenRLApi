@@ -444,18 +444,42 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
             items = extract_items_from_tagame(decompressed_upk, loc_all_languages, existing_items)
             log.info("Extracted %d items across %d languages in %.2fs", len(items), len(loc_all_languages), time.time() - t0)
 
+            clean_items = [{k: v for k, v in it.items() if k != "translations"} for it in items]
+            available_locales = list(ALL_LANGUAGES)
+
             payload = {
-                "Items": items,
-                "items": items,
+                "Items": clean_items,
+                "items": clean_items,
                 "meta": {
                     "game_version": game_ver,
                     "dump_fingerprint": "openrl_tagame_upk",
                     "generated_at": int(time.time()),
-                    "total_items": len(items),
-                    "languages": list(loc_all_languages.keys()),
+                    "total_items": len(clean_items),
+                    "available_locales": available_locales,
+                    "avaliable_locales": available_locales,
+                    "languages": available_locales,
                     "categories": {}
                 }
             }
+
+            master_payload = {
+                "Items": items,
+                "items": items,
+                "meta": {
+                    "game_version": game_ver,
+                    "dump_fingerprint": "openrl_tagame_upk_master",
+                    "generated_at": int(time.time()),
+                    "total_items": len(items),
+                    "available_locales": available_locales,
+                    "avaliable_locales": available_locales,
+                    "languages": available_locales,
+                    "categories": {}
+                }
+            }
+            try:
+                (output_file.parent / "items_master.json").write_text(json.dumps(master_payload, indent=2), encoding="utf-8")
+            except Exception:
+                pass
 
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -464,7 +488,10 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
                 localized_items = []
                 for it in items:
                     tr_name = it.get("translations", {}).get(lang_code) or it.get("Product") or it.get("name") or ""
-                    localized_items.append({**it, "Product": tr_name, "name": tr_name})
+                    rec_loc = {k: v for k, v in it.items() if k != "translations"}
+                    rec_loc["Product"] = tr_name
+                    rec_loc["name"] = tr_name
+                    localized_items.append(rec_loc)
 
                 loc_payload = {
                     "Items": localized_items,
@@ -474,6 +501,9 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
                         "language": lang_code,
                         "generated_at": int(time.time()),
                         "total_items": len(localized_items),
+                        "available_locales": available_locales,
+                        "avaliable_locales": available_locales,
+                        "languages": available_locales,
                     }
                 }
                 (DATA_DIR / f"items_{lang_code}.json").write_text(json.dumps(loc_payload, indent=2), encoding="utf-8")
@@ -484,14 +514,19 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
 
     if existing_items:
         items = list(existing_items.values())
+        clean_items = [{k: v for k, v in it.items() if k != "translations"} for it in items]
+        available_locales = list(ALL_LANGUAGES)
         payload = {
-            "Items": items,
-            "items": items,
+            "Items": clean_items,
+            "items": clean_items,
             "meta": {
                 "game_version": game_ver,
                 "dump_fingerprint": "openrl_fallback",
                 "generated_at": int(time.time()),
-                "total_items": len(items),
+                "total_items": len(clean_items),
+                "available_locales": available_locales,
+                "avaliable_locales": available_locales,
+                "languages": available_locales,
                 "categories": {}
             }
         }

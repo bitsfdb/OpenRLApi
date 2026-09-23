@@ -391,19 +391,39 @@ def sync_titles_from_psynet(build_id: str | None = None) -> dict[str, Any]:
         })
 
     categories_list = list(int_cats.values())
+    clean_titles = [{k: v for k, v in t.items() if k != "translations"} for t in processed_titles]
+    available_locales = list(ALL_LANGUAGES)
     payload = {
         "game_version": game_version,
         "category_count": len(categories_list),
+        "title_count": len(clean_titles),
+        "available_locales": available_locales,
+        "avaliable_locales": available_locales,
+        "languages": available_locales,
+        "categories": categories_list,
+        "titles": clean_titles,
+    }
+
+    master_payload = {
+        "game_version": game_version,
+        "category_count": len(categories_list),
         "title_count": len(processed_titles),
+        "available_locales": available_locales,
+        "avaliable_locales": available_locales,
+        "languages": available_locales,
         "categories": categories_list,
         "titles": processed_titles,
     }
+    try:
+        (TITLES_FILE.parent / "titles_master.json").write_text(json.dumps(master_payload, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
     TITLES_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     for l_code in ALL_LANGUAGES:
         loc_titles = [
-            {**t, "text": t.get("translations", {}).get(l_code) or t["text"]}
+            {k: v for k, v in t.items() if k != "translations" and k != "text"} | {"text": t.get("translations", {}).get(l_code) or t["text"]}
             for t in processed_titles
         ]
         loc_payload = {
@@ -411,12 +431,15 @@ def sync_titles_from_psynet(build_id: str | None = None) -> dict[str, Any]:
             "language": l_code,
             "category_count": len(categories_list),
             "title_count": len(loc_titles),
+            "available_locales": available_locales,
+            "avaliable_locales": available_locales,
+            "languages": available_locales,
             "categories": categories_list,
             "titles": loc_titles,
         }
         (DATA_DIR / f"titles_{l_code}.json").write_text(json.dumps(loc_payload, indent=2), encoding="utf-8")
 
-    log.info("Synced %d titles across %d categories from PsyNet", len(processed_titles), len(categories_list))
+    log.info("Synced %d titles across %d categories from PsyNet", len(clean_titles), len(categories_list))
     return {
         "success": True,
         "title_count": len(processed_titles),

@@ -464,6 +464,38 @@ async def get_items_catalog(
     return Response(content=body, status_code=200, headers=headers, media_type="application/json")
 
 
+@app.get("/items_{lang_code}.json", tags=["Items"])
+@app.head("/items_{lang_code}.json", include_in_schema=False)
+@app.get("/v2/rl/items_{lang_code}.json", tags=["Items"])
+@app.head("/v2/rl/items_{lang_code}.json", include_in_schema=False)
+async def get_items_catalog_by_lang_file(
+    lang_code: str,
+    request: Request,
+):
+    target_lang = resolve_language_code(lang_code)
+    raw_bytes, gzip_bytes = _load_items_compressed(target_lang)
+
+    is_head = request.method == "HEAD"
+    supports_gzip = request_accepts_gzip(request)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=86400, s-maxage=604800",
+        "Vary": "Accept-Encoding",
+        "Access-Control-Allow-Origin": "*",
+    }
+
+    if supports_gzip and gzip_bytes:
+        headers["Content-Encoding"] = "gzip"
+        headers["Content-Length"] = str(len(gzip_bytes))
+        body = b"" if is_head else gzip_bytes
+    else:
+        headers["Content-Length"] = str(len(raw_bytes))
+        body = b"" if is_head else raw_bytes
+
+    return Response(content=body, status_code=200, headers=headers, media_type="application/json")
+
+
 @app.get("/v2/rl/products", response_model=ProductsListResponse, tags=["Products"])
 def get_products(
     category: str | None = Query(None),
@@ -555,6 +587,38 @@ async def get_titles_catalog(
     lang: str | None = Query(None),
 ):
     target_lang = resolve_language_code(l or lang)
+    raw_bytes, gzip_bytes = _load_titles_compressed(target_lang)
+
+    is_head = request.method == "HEAD"
+    supports_gzip = request_accepts_gzip(request)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=86400, s-maxage=604800",
+        "Vary": "Accept-Encoding",
+        "Access-Control-Allow-Origin": "*",
+    }
+
+    if supports_gzip and gzip_bytes:
+        headers["Content-Encoding"] = "gzip"
+        headers["Content-Length"] = str(len(gzip_bytes))
+        body = b"" if is_head else gzip_bytes
+    else:
+        headers["Content-Length"] = str(len(raw_bytes))
+        body = b"" if is_head else raw_bytes
+
+    return Response(content=body, status_code=200, headers=headers, media_type="application/json")
+
+
+@app.get("/titles_{lang_code}.json", tags=["Titles"])
+@app.head("/titles_{lang_code}.json", include_in_schema=False)
+@app.get("/v2/rl/titles_{lang_code}.json", tags=["Titles"])
+@app.head("/v2/rl/titles_{lang_code}.json", include_in_schema=False)
+async def get_titles_catalog_by_lang_file(
+    lang_code: str,
+    request: Request,
+):
+    target_lang = resolve_language_code(lang_code)
     raw_bytes, gzip_bytes = _load_titles_compressed(target_lang)
 
     is_head = request.method == "HEAD"
