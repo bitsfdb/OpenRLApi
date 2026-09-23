@@ -451,7 +451,6 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
                 "items": clean_items,
                 "meta": {
                     "game_version": game_ver,
-                    "dump_fingerprint": "openrl_tagame_upk",
                     "generated_at": int(time.time()),
                     "total_items": len(clean_items),
                     "available_locales": available_locales,
@@ -463,7 +462,6 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
                 "items": items,
                 "meta": {
                     "game_version": game_ver,
-                    "dump_fingerprint": "openrl_tagame_upk_master",
                     "generated_at": int(time.time()),
                     "total_items": len(items),
                     "available_locales": available_locales,
@@ -510,7 +508,6 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
             "items": clean_items,
             "meta": {
                 "game_version": game_ver,
-                "dump_fingerprint": "openrl_fallback",
                 "generated_at": int(time.time()),
                 "total_items": len(clean_items),
                 "available_locales": available_locales,
@@ -524,7 +521,6 @@ def extract_catalog(output_file: Path = OUTPUT_FILE) -> dict[str, Any]:
     skeleton = {
         "meta": {
             "game_version": game_ver,
-            "dump_fingerprint": "openrl_initial",
             "generated_at": int(time.time()),
             "total_items": 0,
             "categories": {}
